@@ -2,6 +2,7 @@
 #include <WiFi.h>
 #include <ArduinoOTA.h>
 #include <TelnetStream.h>
+#include "vector.h"
 
 float pi = 3.14159265359;
 int rgbPins[] = {13, 12, 14};
@@ -9,6 +10,9 @@ int cycleTime = 2000000.0;
 
 const char * ssid = "TS";
 const char * passwd = "_MantatzpdP_";
+
+Vector colorIncVec(64, 255, 128);
+Vector color(0, 0, 0);
 
 void wifiSetup() {
   WiFi.mode(WIFI_STA);
@@ -70,79 +74,44 @@ void otaTask(void * params) {
 }
 
 void telnetShellTask(void * params) {
-  char inputBuffer[64];
-  size_t cnt = 0;
+  String input;
   for(;;) {
-    if(cnt == 0) {
-      cnt = TelnetStream.readBytesUntil('^M', inputBuffer, 64);
-      // TelnetStream.println(cnt);
-    } else {
-      char cmd[64];
-      for(int i = 0; i < 64; i ++) cmd[i] = ' ';
-      for(int i = 0; i < cnt; i ++) cmd[i] = inputBuffer[i];
-      TelnetStream.println("");
-      TelnetStream.print(cmd);
-      TelnetStream.println("");
-      cnt = 0;
+    input.concat(TelnetStream.readString());
+
+    if(!input.isEmpty() && input.endsWith("\n")) {
+      // TelnetStream.println("");
+      if(input.startsWith("color")) {
+        String args = input.substring(input.indexOf(" "));
+        if(!args.isEmpty()) {
+          String colorArgs[6] = {args, "", "", "", "", ""};
+          for(int i = 0; i < 6; i++) {
+            colorArgs[i] = colorArgs[i].substring(args.indexOf(" "), args.substring(args.indexOf(" ")).indexOf(" "));
+          }
+        } else {
+          TelnetStream.printf("r: %g g: %g b: %g \n\r", color.x, color.y, color.z);
+        }
+      } 
+      if(input.startsWith("red")) {
+        String args = input.substring(input.indexOf(" "));
+        if(!args.isEmpty()) {
+          int val = args.toInt();
+          TelnetStream.printf("Color red is set to %d \n\r", val);
+          color.x = (double)(val);
+        } else {
+          TelnetStream.printf("Value of red is %g \n\r", color.x);
+        }
+      } 
+      if(input.startsWith("exit")) {
+        TelnetStream.flush();
+        TelnetStream.stop();
+      }
+      TelnetStream.print("[RGBFADE] uSh -> ");
+      input = "";
     }
+
     vTaskDelay(1);
   }
 }
-
-class Vector {
-  private:
-
-  public:
-
-  double x = 0;
-  double y = 0;
-  double z = 0;
-
-  Vector(double nx, double ny, double nz) {
-    x = nx;
-    y = ny;
-    z = nz;
-  }
-
-  void add(Vector vector) {
-    x += vector.x;
-    y += vector.y;
-    z += vector.z;
-  }
-
-  void sub(Vector vector) {
-    x -= vector.x;
-    y -= vector.y;
-    z -= vector.z;
-  }
-
-  void mult(double factor) {
-    x *= factor;
-    y *= factor;
-    z *= factor;
-  }
-
-  void set(double nx, double ny, double nz) {
-    x = nx;
-    y = ny;
-    z = nz;
-  }
-
-  double mag() {
-    return sqrt(pow(x, 2)+pow(y, 2)+pow(z, 2));
-  }
-
-  void norm() {
-    double len = mag();
-    x = x/len;
-    y = y/len;
-    z = z/len;
-  }
-
-};
-
-Vector colorIncVec(64, 255, 128);
-Vector color(0, 0, 0);
 
 void setup() {
   Serial.begin(9600);
