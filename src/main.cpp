@@ -11,15 +11,20 @@ const char * ssid = "TS";
 const char * passwd = "_MantatzpdP_";
 
 void wifiSetup() {
-
-  pinMode(2, OUTPUT);
-  digitalWrite(2, 1);
-
   WiFi.mode(WIFI_STA);
   WiFi.begin(ssid, passwd);
-  while(WiFi.waitForConnectResult() != WL_CONNECTED) ESP.restart();
-  delay(2000);
-  digitalWrite(2, 0);
+  int retryIntervalMs = 500;
+  int timeoutCounter = 25 * (1000 / retryIntervalMs);
+  while (WiFi.status() != WL_CONNECTED && timeoutCounter > 0)
+  {
+    delay(retryIntervalMs);
+    if (timeoutCounter == (25 * 2 - 3))
+    {
+      WiFi.reconnect();
+      Serial.println("Reconnecting...");
+    }
+    timeoutCounter--;
+  }
 }
 
 void otaSetup() {
@@ -64,11 +69,22 @@ void otaTask(void * params) {
   }
 }
 
-void telnetShell(void * params) {
-  char cmd[64];
+void telnetShellTask(void * params) {
+  char inputBuffer[64];
+  size_t cnt = 0;
   for(;;) {
-    if(TelnetStream.readBytesUntil('\n', cmd, 64) > 0)
-      TelnetStream.println(cmd);
+    if(cnt == 0) {
+      cnt = TelnetStream.readBytesUntil('^M', inputBuffer, 64);
+      // TelnetStream.println(cnt);
+    } else {
+      char cmd[64];
+      for(int i = 0; i < 64; i ++) cmd[i] = ' ';
+      for(int i = 0; i < cnt; i ++) cmd[i] = inputBuffer[i];
+      TelnetStream.println("");
+      TelnetStream.print(cmd);
+      TelnetStream.println("");
+      cnt = 0;
+    }
     vTaskDelay(1);
   }
 }
@@ -88,25 +104,25 @@ class Vector {
     z = nz;
   }
 
-  double add(Vector vector) {
+  void add(Vector vector) {
     x += vector.x;
     y += vector.y;
     z += vector.z;
   }
 
-  double sub(Vector vector) {
+  void sub(Vector vector) {
     x -= vector.x;
     y -= vector.y;
     z -= vector.z;
   }
 
-  double mult(double factor) {
+  void mult(double factor) {
     x *= factor;
     y *= factor;
     z *= factor;
   }
 
-  double set(double nx, double ny, double nz) {
+  void set(double nx, double ny, double nz) {
     x = nx;
     y = ny;
     z = nz;
@@ -116,7 +132,7 @@ class Vector {
     return sqrt(pow(x, 2)+pow(y, 2)+pow(z, 2));
   }
 
-  double norm() {
+  void norm() {
     double len = mag();
     x = x/len;
     y = y/len;
@@ -134,8 +150,8 @@ void setup() {
   otaSetup();
   TelnetStream.begin();
 
-  xTaskCreate(otaTask, "OTA_Task", 10000, NULL, 1, NULL);
-  xTaskCreate(telnetShell, "Telnet Shell", 10000, NULL, 1, NULL);
+  xTaskCreate(otaTask, "OTA Task", 100000, NULL, 1, NULL);
+  xTaskCreate(telnetShellTask, "Telnet Shell Task", 50000, NULL, 1, NULL);
 
   for(int i = 0; i<3; i++) {
     pinMode(rgbPins[i], OUTPUT);
@@ -152,5 +168,5 @@ void loop() {
   color.add(colorIncVec);
   if(color.mag() > 65535) color.mult(0);
 
-  //delay(500);
+  delay(100);
 }
